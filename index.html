@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Countdown</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#7dd3fc;--muted:#9aa6b2}
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:linear-gradient(180deg,#071021 0%, #071827 60%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:radial-gradient(circle at 10% 10%, rgba(255,255,255,0.02), transparent),var(--card);border-radius:14px;padding:28px;max-width:720px;width:100%;box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+    h1{font-size:1.5rem;margin:0 0 8px}
+    p.lead{margin:0 0 18px;color:var(--muted)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+    input[type="datetime-local"]{padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;min-width:220px}
+    button{background:linear-gradient(90deg,var(--accent),#60a5fa);border:0;padding:10px 14px;border-radius:10px;color:#012;cursor:pointer;font-weight:600}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .display{display:flex;gap:12px;justify-content:center;align-items:center;padding:18px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);margin-bottom:12px}
+    .unit{text-align:center;min-width:64px}
+    .number{font-size:2.2rem;font-weight:700;letter-spacing:0.02em}
+    .label{font-size:0.75rem;color:var(--muted);margin-top:6px}
+    footer{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:0.85rem;margin-top:8px}
+    @media (max-width:520px){.display{flex-wrap:wrap}.unit{min-width:48px}.number{font-size:1.6rem}}
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <h1>Simple Countdown</h1>
+    <p class="lead">Pick a future date & time, then start the countdown. Works in modern browsers.</p>
+
+    <div class="controls" aria-hidden="false">
+      <label for="target" class="visually-hidden">Target date and time</label>
+      <input id="target" type="datetime-local" aria-label="Target date and time" />
+      <button id="start">Start</button>
+      <button id="pause" class="ghost">Pause</button>
+      <button id="reset" class="ghost">Reset</button>
+    </div>
+
+    <div id="display" class="display" aria-live="polite">
+      <div class="unit"><div id="days" class="number">0</div><div class="label">Days</div></div>
+      <div class="unit"><div id="hours" class="number">00</div><div class="label">Hours</div></div>
+      <div class="unit"><div id="minutes" class="number">00</div><div class="label">Minutes</div></div>
+      <div class="unit"><div id="seconds" class="number">00</div><div class="label">Seconds</div></div>
+    </div>
+
+    <div id="message" role="status" style="min-height:18px;color:var(--accent);"></div>
+
+    <footer>
+      <div>Local time: <span id="nowSmall"></span></div>
+      <div style="opacity:.9">Made with &lt;3</div>
+    </footer>
+  </main>
+
+  <script>
+    // Simple, dependency-free countdown
+    const $ = sel => document.querySelector(sel);
+    const targetInput = $('#target');
+    const startBtn = $('#start');
+    const pauseBtn = $('#pause');
+    const resetBtn = $('#reset');
+    const msg = $('#message');
+    const nowSmall = $('#nowSmall');
+    const daysEl = $('#days'), hoursEl = $('#hours'), minutesEl = $('#minutes'), secondsEl = $('#seconds');
+
+    let targetTime = null;
+    let timerId = null;
+    let paused = false;
+    let remainingWhenPaused = null;
+
+    function updateNowLabel(){
+      const now = new Date();
+      nowSmall.textContent = now.toLocaleString();
+    }
+    setInterval(updateNowLabel,1000); updateNowLabel();
+
+    function msToParts(ms){
+      if(ms < 0) ms = 0;
+      const sec = Math.floor(ms/1000) % 60;
+      const min = Math.floor(ms/60000) % 60;
+      const hr = Math.floor(ms/3600000) % 24;
+      const days = Math.floor(ms/86400000);
+      return {days,hr,min,sec};
+    }
+
+    function render(ms){
+      const p = msToParts(ms);
+      daysEl.textContent = p.days;
+      hoursEl.textContent = String(p.hr).padStart(2,'0');
+      minutesEl.textContent = String(p.min).padStart(2,'0');
+      secondsEl.textContent = String(p.sec).padStart(2,'0');
+    }
+
+    function tick(){
+      if(!targetTime) return stopTimer();
+      const now = Date.now();
+      const remaining = targetTime - now;
+      if(remaining <= 0){
+        render(0);
+        msg.textContent = '🎉 Time reached!';
+        stopTimer();
+        return;
+      }
+      render(remaining);
+    }
+
+    function startTimer(){
+      if(timerId) return; // already running
+      if(!targetTime && !remainingWhenPaused){
+        msg.textContent = 'Choose a future date/time first.';
+        return;
+      }
+      if(remainingWhenPaused != null){
+        targetTime = Date.now() + remainingWhenPaused;
+        remainingWhenPaused = null;
+      }
+      msg.textContent = '';
+      tick();
+      timerId = setInterval(tick, 250);
+      paused = false;
+      pauseBtn.textContent = 'Pause';
+    }
+
+    function stopTimer(){
+      if(timerId){
+        clearInterval(timerId);
+        timerId = null;
+      }
+    }
+
+    startBtn.addEventListener('click', ()=>{
+      // read input value
+      const val = targetInput.value;
+      if(!val){ msg.textContent = 'Please pick a date & time.'; return; }
+      const selected = new Date(val);
+      if(isNaN(selected)) { msg.textContent = 'Invalid date/time.'; return; }
+      if(selected.getTime() <= Date.now()){ msg.textContent = 'Pick a future date/time.'; return; }
+      targetTime = selected.getTime();
+      remainingWhenPaused = null;
+      startTimer();
+    });
+
+    pauseBtn.addEventListener('click', ()=>{
+      if(!timerId && !remainingWhenPaused){ msg.textContent = 'Nothing to pause.'; return; }
+      if(paused){
+        // resume
+        startTimer();
+      } else {
+        // pause
+        stopTimer();
+        paused = true;
+        remainingWhenPaused = targetTime - Date.now();
+        msg.textContent = '⏸ Paused';
+        pauseBtn.textContent = 'Resume';
+      }
+    });
+
+    resetBtn.addEventListener('click', ()=>{
+      stopTimer();
+      targetTime = null; remainingWhenPaused = null; paused = false;
+      render(0);
+      msg.textContent = '';
+      pauseBtn.textContent = 'Pause';
+      targetInput.value = '';
+    });
+
+    // initialize display to zeros
+    render(0);
+
+    // accessibility: allow Enter on input to start
+    targetInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') startBtn.click(); });
+
+  </script>
+</body>
+</html>
